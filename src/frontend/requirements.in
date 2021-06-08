@@ -10,3 +10,5 @@ opentelemetry-instrumentation-sqlalchemy==0.13b0
 opentelemetry-instrumentation-jinja2==0.13b0
 opentelemetry-instrumentation-requests==0.13b0
 uwsgi==2.0.19.1
+psycopg2==2.8.6
+wheel==0.36.2

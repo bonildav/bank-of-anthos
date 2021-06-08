@@ -135,7 +135,6 @@ protobuf==3.12.2
     #   -r requirements.in
     #   google-api-core
     #   googleapis-common-protos
-psycopg2==2.7.7
     # via -r requirements.in
 py==1.10.0
     # via
@@ -220,6 +219,8 @@ wrapt==1.12.1
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-sqlalchemy
 zipp==1.2.0
+psycopg2==2.8.6
+wheel==0.36.2
     # via
     #   -r requirements.in
     #   importlib-metadata
