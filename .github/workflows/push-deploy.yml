@@ -14,24 +14,78 @@
 
 name: "Push and Deploy"
 on:
-  push:
-    # run on pushes to master
-    branches:
-      - master
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    branches: [master]
+    types: 
+      - completed
+
 jobs:
   push-deploy:
-    runs-on: [self-hosted, live-v2]
+    runs-on: [ubuntu-20.04]
+
     steps:
     - uses: actions/checkout@v2
-    - name: Push latest images to GCR
+    - name: Install skaffold
+      run: |
+        curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64 && \
+        chmod +x skaffold && \
+        sudo mv skaffold /usr/local/bin
+
+
+    - name: Install gcloud
+      uses: google-github-actions/setup-gcloud@master
+      with:
+        version: '309.0.0'
+        service_account_key: ${{ secrets.GCLOUD_KEY }}
+        project_id: learning-project-288414
+    # Need to create first a service account key.
+    # https://cloud.google.com/iam/docs/creating-managing-service-account-keys
+    # then need to encrypted with base64
+    # https://github.com/actions-hub/gcloud
+    - name: Login to gcloud
+      id: gcloud
+      uses: elgohr/gcloud-login-action@0.2
+      with:
+        account_key: ${{ secrets.GCLOUD_KEY }}
+
+
+    - name: Build + Deploy PR images to GKE
       timeout-minutes: 20
       run: |
+        PR_NUMBER=$(echo $GITHUB_REF | awk 'BEGIN { FS = "/" } ; { print $3 }')
+        NAMESPACE="pr${PR_NUMBER}"
+        echo "::set-env name=NAMESPACE::$NAMESPACE"
+        echo "::set-env name=PR_NUMBER::$PR_NUMBER"
+        gcloud auth configure-docker
+        chmod +x mvnw
+
+        gcloud container clusters get-credentials $PR_CLUSTER --zone $ZONE --project $PROJECT_ID
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: $NAMESPACE
+        EOF
+        echo Deploying application
         skaffold config set --global local-cluster false
-        # tag with git hash
-        skaffold build --default-repo=gcr.io/$PROJECT_ID \
-                       --tag=$GITHUB_SHA
-        # tag as latest
-        skaffold build --default-repo=gcr.io/$PROJECT_ID \
-                       --tag=latest
+        skaffold run --default-repo=gcr.io/$PROJECT_ID --tag=$GITHUB_SHA --namespace=$NAMESPACE
       env:
-        PROJECT_ID: ${{ secrets.PROJECT_ID }}
+        PROJECT_ID: "learning-project-288414"
+        PR_CLUSTER: "toptal-gke"
+        ZONE: "us-central1-c"
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+
+    - name: Wait For Pods
+      timeout-minutes: 20
+      run: |
+        set -x
+        kubectl config set-context --current --namespace=$NAMESPACE
+        kubectl wait --for=condition=available --timeout=300s deployment/frontend
+        kubectl wait --for=condition=available --timeout=300s deployment/userservice
+        kubectl wait --for=condition=available --timeout=300s deployment/ledgerwriter
+        kubectl wait --for=condition=available --timeout=300s deployment/transactionhistory
+        kubectl wait --for=condition=available --timeout=300s deployment/balancereader
+        kubectl wait --for=condition=available --timeout=300s deployment/loadgenerator
+        kubectl wait --for=condition=ready --timeout=300s pod/accounts-db-0
+        kubectl wait --for=condition=ready --timeout=300s pod/ledger-db-0
