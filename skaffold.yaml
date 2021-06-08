@@ -27,8 +27,6 @@ build:
   - image: gcr.io/bank-of-anthos/transactionhistory
     jib:
       project: src/transactionhistory
-  - image: gcr.io/bank-of-anthos/contacts
-    context: src/contacts
   - image: gcr.io/bank-of-anthos/userservice
     context: src/userservice
   - image: gcr.io/bank-of-anthos/loadgenerator
